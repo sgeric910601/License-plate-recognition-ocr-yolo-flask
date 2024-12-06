@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>摄像头与保存图像展示</title>
+    <style>
+        /* 外层容器，包含视频画面和车牌号 */
+        .video-container {
+            position: relative;  /* 容器设置为相对定位 */
+            width: 640px;        /* 固定视频宽度 */
+            height: 480px;       /* 固定视频高度 */
+        }
+
+        /* 视频画面样式 */
+        .video-feed {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 车牌号区域样式 */
+        .license-plate {
+            position: absolute;    /* 绝对定位 */
+            top: 10px;             /* 离顶部 10 像素 */
+            left: 130%;             /* 水平居中 */
+            transform: translateX(-50%); /* 使其真正居中 */
+            background-color: rgba(0, 0, 0, 0.5); /* 半透明背景 */
+            color: white;          /* 字体颜色白色 */
+            padding: 10px 20px;    /* 车牌号区域的内边距 */
+            border-radius: 5px;    /* 圆角边框 */
+            font-size: 24px;       /* 字体大小 */
+            white-space: nowrap;   /* 避免换行 */
+        }
+    </style>
+    <script>
+        // 设置页面每隔5秒自动刷新一次
+        setInterval(function() {
+            window.location.reload();
+        }, 5000);  // 5000 毫秒等于 5 秒
+    </script>
+</head>
+<body>
+    <div class="video-container">
+        <!-- 摄影机画面 -->
+        <img class="video-feed" src="{{ url_for('video_feed') }}" alt="摄像机画面">
+
+        <!-- 车牌号显示 -->
+        <div class="license-plate">
+            車牌：{{ last_license_plate }}
+        </div>
+    </div>
+
+    <h1>保存的照片</h1>
+    <div>
+        {% for image in images %}
+            <img src="{{ url_for('uploaded_file', filename=image) }}" width="200">
+        {% endfor %}
+    </div>
+</body>
+</html>
