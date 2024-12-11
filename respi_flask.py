@@ -1,10 +1,11 @@
 import cv2
 import os
+import pandas as pd
 from ultralytics import YOLO
 from paddleocr import PaddleOCR
 from flask import Flask, render_template, Response, send_from_directory
 import re
-import torch
+import datetime
 
 # 初始化 Flask 
 app = Flask(__name__)
@@ -25,6 +26,17 @@ os.makedirs(save_dir, exist_ok=True)
 saved_license_plates = set()
 frame_count = 0     # 用於命名保存的圖像文件
 
+plates_file = "plates.txt"
+
+# 獲取當前日期和時間
+current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+# 將日期和時間寫入檔案
+with open(plates_file, "a", encoding="utf-8") as file:
+    file.write(f"程式執行時間：{current_time}\n")
+
+print(f"執行時間已記錄在 {plates_file}")
+
 last_license_plate = ""     # 用于保存最新识别的车牌号
 # 初始化攝影機
 cap = cv2.VideoCapture(0)
@@ -38,7 +50,8 @@ def is_valid_license_plate(text):
     # 汽車車牌格式
     car_plate_pattern = r'^(?:[A-Z]{2,3}-\d{4}|\d{4}-[A-Z]{2}|\d{4}-[A-Z]\d|\d{4}-\d[A-Z]|[A-Z]\d-\d{4}|\d[A-Z]-\d{4})$'
     # 機車車牌格式
-    bike_plate_pattern = r'^(?:\d{3}-[A-Z]{3}|[A-Z]{3}-\d{3})$'
+    bike_plate_pattern = r'^(?:\d{3}-[A-Z]{3}|[A-Z]{3}-\d{3}|[A-Z0-9]{3}-[A-Z0-9]{3})$'
+
     
     # 驗證車牌是否符合任一格式
     return re.match(car_plate_pattern, text) or re.match(bike_plate_pattern, text)
@@ -95,6 +108,13 @@ def process_video_stream():
                                         saved_license_plates.add(license_text)
                                         # 更新最后一个识别的车牌号
                                         last_license_plate = license_text
+                                                                               
+                                        # 將新的車牌添加到 plates.txt
+                                        with open(plates_file, "a", encoding="utf-8") as file:
+                                            file.write(license_text + "\n")
+                                            lines = [line.strip() for line in file.readlines() if line.strip()]
+                                        print("已儲存車牌")
+
                                 else:
                                     print(f"無效車牌號碼: {license_text}")
         except Exception as e:
