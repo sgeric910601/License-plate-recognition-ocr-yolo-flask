@@ -3,7 +3,7 @@ import os
 from ultralytics import YOLO
 from paddleocr import PaddleOCR
 import re
-
+import datetime
 # 初始化 PaddleOCR（英文模式，使用GPU）
 ocr = PaddleOCR(lang='en', use_angle_cls=True, use_gpu=True)
 
@@ -11,7 +11,6 @@ ocr = PaddleOCR(lang='en', use_angle_cls=True, use_gpu=True)
 model = YOLO('license_plate_detector2.pt')
 device = 'cpu'  # 如果需要 GPU 支援，可改為 'cuda'
 model.to(device)
-
 # 設定保存圖像的目錄
 save_dir = 'static/captured_images'
 os.makedirs(save_dir, exist_ok=True)
@@ -19,6 +18,17 @@ os.makedirs(save_dir, exist_ok=True)
 # 存儲已檢測到的車牌號集合
 saved_license_plates = set()
 frame_count = 0  # 用於命名保存的圖像文件
+
+plates_file = "plates.txt"
+
+# 獲取當前日期和時間
+current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+# 將日期和時間寫入檔案
+with open(plates_file, "a", encoding="utf-8") as file:
+    file.write(f"程式執行時間：{current_time}\n")
+
+print(f"執行時間已記錄在 {plates_file}")
 
 # 初始化攝影機
 cap = cv2.VideoCapture(0)
@@ -32,7 +42,7 @@ def is_valid_license_plate(text):
     # 汽車車牌格式
     car_plate_pattern = r'^(?:[A-Z]{2,3}-\d{4}|\d{4}-[A-Z]{2}|\d{4}-[A-Z]\d|\d{4}-\d[A-Z]|[A-Z]\d-\d{4}|\d[A-Z]-\d{4})$'
     # 機車車牌格式
-    bike_plate_pattern = r'^(?:\d{3}-[A-Z]{3}|[A-Z]{3}-\d{3})$'
+    bike_plate_pattern = r'^(?:\d{3}-[A-Z]{3}|[A-Z]{3}-\d{3}|[A-Z0-9]{3}-[A-Z0-9]{3})$'
     
     # 驗證車牌是否符合任一格式
     return re.match(car_plate_pattern, text) or re.match(bike_plate_pattern, text)
@@ -87,6 +97,15 @@ def process_video_stream():
                                         print(f"檢測到車牌 '{license_text}'，保存圖像: {save_path}")
                                         frame_count += 1
                                         saved_license_plates.add(license_text)
+                                        
+                                        
+                                        # 將新的車牌添加到 plates.txt
+                                        with open(plates_file, "a", encoding="utf-8") as file:
+                                            file.write(license_text + "\n")
+                                            lines = [line.strip() for line in file.readlines() if line.strip()]
+                                        print("已儲存車牌")
+                            
+                                        
                                 else:
                                     print(f"無效車牌號碼: {license_text}")
         except Exception as e:
