@@ -1,60 +1,120 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>摄像头与保存图像展示</title>
+    <title>攝像頭與保存影像展示</title>
     <style>
-        /* 外层容器，包含视频画面和车牌号 */
-        .video-container {
-            position: relative;  /* 容器设置为相对定位 */
-            width: 640px;        /* 固定视频宽度 */
-            height: 480px;       /* 固定视频高度 */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
-        /* 视频画面样式 */
+        .video-container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            margin: 20px 0;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
         .video-feed {
             width: 100%;
             height: 100%;
+            object-fit: cover;
         }
 
-        /* 车牌号区域样式 */
         .license-plate {
-            position: absolute;    /* 绝对定位 */
-            top: 10px;             /* 离顶部 10 像素 */
-            left: 130%;             /* 水平居中 */
-            transform: translateX(-50%); /* 使其真正居中 */
-            background-color: rgba(0, 0, 0, 0.5); /* 半透明背景 */
-            color: white;          /* 字体颜色白色 */
-            padding: 10px 20px;    /* 车牌号区域的内边距 */
-            border-radius: 5px;    /* 圆角边框 */
-            font-size: 24px;       /* 字体大小 */
-            white-space: nowrap;   /* 避免换行 */
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 24px;
+            white-space: nowrap;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        h1 {
+            font-size: 28px;
+            color: #333;
+            margin: 20px 0;
+        }
+
+        .image-gallery {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .image-gallery img {
+            width: 200px;
+            height: auto;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
     </style>
-    <script>
-        // 设置页面每隔5秒自动刷新一次
-        setInterval(function() {
-            window.location.reload();
-        }, 5000);  // 5000 毫秒等于 5 秒
-    </script>
 </head>
 <body>
     <div class="video-container">
-        <!-- 摄影机画面 -->
-        <img class="video-feed" src="{{ url_for('video_feed') }}" alt="摄像机画面">
+        <!-- 原本的攝影機畫面 -->
+        <img class="video-feed" id="video-feed" src="{{ url_for('video_feed') }}" alt="攝像機畫面">
 
-        <!-- 车牌号显示 -->
-        <div class="license-plate">
+        <!-- 顯示車牌號的元素 -->
+        <div class="license-plate" id="license-plate">
             車牌：{{ last_license_plate }}
         </div>
     </div>
 
     <h1>保存的照片</h1>
-    <div>
+    <div class="image-gallery" id="image-gallery">
         {% for image in images %}
-            <img src="{{ url_for('uploaded_file', filename=image) }}" width="200">
+            <img src="{{ url_for('uploaded_file', filename=image) }}">
         {% endfor %}
     </div>
+
+    <script>
+        // 定時更新內容 (例如每5秒)
+        setInterval(updateContent, 5000);
+
+        function updateContent() {
+            fetch('/get_dynamic_data') // 後端的JSON資料API
+                .then(response => response.json())
+                .then(data => {
+                    // 更新攝像機畫面 (加上時間戳避免快取)
+                    const videoFeed = document.getElementById('video-feed');
+                    videoFeed.src = data.video_feed + '?t=' + new Date().getTime();
+
+                    // 更新車牌號
+                    const licensePlate = document.getElementById('license-plate');
+                    licensePlate.textContent = '車牌：' + data.last_license_plate;
+
+                    // 更新圖片列表
+                    const imageGallery = document.getElementById('image-gallery');
+                    imageGallery.innerHTML = '';
+                    data.images.forEach(imgUrl => {
+                        const img = document.createElement('img');
+                        img.src = imgUrl + '?t=' + new Date().getTime(); // 避免快取
+                        imageGallery.appendChild(img);
+                    });
+                })
+                .catch(error => console.error('更新內容時發生錯誤：', error));
+        }
+
+        // 頁面載入後先更新一次
+        updateContent();
+    </script>
 </body>
 </html>

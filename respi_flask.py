@@ -145,6 +145,21 @@ def video_feed():
 def uploaded_file(filename):
     # 提供保存的图像
     return send_from_directory(save_dir, filename)
+from flask import jsonify
+
+@app.route('/get_dynamic_data')
+def get_dynamic_data():
+    global last_license_plate
+    images = os.listdir(save_dir)
+    # 回傳 JSON 格式的最新車牌號以及當前已保存的圖片 URL
+    # 前端可透過 url_for('uploaded_file', filename=image) 動態產生圖片路徑
+    image_urls = [f"/static/captured_images/{img}" for img in images]
+
+    return jsonify({
+        "last_license_plate": last_license_plate,
+        "images": image_urls,
+        "video_feed": "/video_feed"  # 假設前端需要更新攝像機畫面 URL
+    })
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', debug=True)
