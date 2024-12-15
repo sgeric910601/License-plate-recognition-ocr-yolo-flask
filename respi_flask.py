@@ -26,8 +26,16 @@ else:
 print(f"使用的設備是: {device}")
 model.to(device)
 
-# 初始化 PaddleOCR
-ocr = PaddleOCR(lang='en', use_angle_cls=True, use_gpu=device in ['cuda', 'mps'])
+
+ocr = PaddleOCR(
+    lang='en', 
+    det_model_dir='OCR/en_PP-OCRv3_det_slim',    # 英文檢測模型 (PP-OCRv3)
+    rec_model_dir='OCR/en_number_mobile_slim_v2.0_rec',    # 英文識別模型 (PP-OCRv3)
+    cls_model_dir='OCR/ch_ppocr_mobile_v2.0_cls_infer', # 若需方向分類器(可選), 否則可省略
+    use_angle_cls=True,  # 若使用方向分類模型請設為True
+    show_log=False,       # 關閉debug顯示
+    use_gpu=True        # 根據您的環境決定是否使用GPU/MPS
+)
 
 # 設置保存圖像的目錄
 save_dir = 'static/captured_images'
@@ -43,7 +51,7 @@ executor = ThreadPoolExecutor(max_workers=2)
 
 # 在程序啟動時初始化攝像頭
 class Camera:
-    def __init__(self, source=0):
+    def __init__(self, source=0,fps=10):
         self.cap = cv2.VideoCapture(source)
         if not self.cap.isOpened():
             raise RuntimeError("無法啟動攝像頭，請檢查設備。")
@@ -79,7 +87,6 @@ def process_video_stream():
         try:
             results = detect_and_recognize(frame)
             detected_text = ""
-
             for result in results:
                 boxes = result.boxes
                 if boxes is not None and boxes.data is not None and len(boxes.data) > 0:
