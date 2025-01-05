@@ -26,6 +26,15 @@ else:
 print(f"使用的設備是: {device}")
 model.to(device)
 
+# 獲取當前日期和時間
+current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+# 將日期和時間寫入檔案
+with open(plates_file, "a", encoding="utf-8") as file:
+    file.write(f"程式執行時間：{current_time}\n")
+
+print(f"執行時間已記錄在 {plates_file}")
+
 # 初始化 PaddleOCR
 ocr = PaddleOCR(lang='en', use_angle_cls=True, use_gpu=device in ['cuda', 'mps'])
 

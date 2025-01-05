@@ -1,25 +1,65 @@
 import cv2
 import os
-from ultralytics import YOLO
-from paddleocr import PaddleOCR
 import re
 import datetime
-# 初始化 PaddleOCR（英文模式，使用GPU）
-ocr = PaddleOCR(lang='en', use_angle_cls=True, use_gpu=True)
+import torch
+from ultralytics import YOLO
+from paddleocr import PaddleOCR
+from flask import Flask, render_template, Response, send_from_directory, jsonify
+from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
 
-# 加载预训练的车牌检测模型
+print(torch.cuda.is_available())
+# Flask 應用初始化
+app = Flask(__name__)
+
+# 加載 YOLO 模型並設置設備
 model = YOLO('license_plate_detector2.pt')
-device = 'cpu'  # 如果需要 GPU 支援，可改為 'cuda'
+if torch.backends.mps.is_available():
+    device = 'mps'
+elif torch.cuda.is_available():
+    device = 'cuda'
+else:
+    device = 'cpu'
+# device = 'cpu'
+print(f"使用的設備是: {device}")
 model.to(device)
-# 設定保存圖像的目錄
+
+# 初始化 PaddleOCR
+ocr = PaddleOCR(lang='en', use_angle_cls=True, use_gpu=device in ['cuda', 'mps'])
+
+# 設置保存圖像的目錄
 save_dir = 'static/captured_images'
 os.makedirs(save_dir, exist_ok=True)
 
-# 存儲已檢測到的車牌號集合
+# 全局變量
+skip_frames = 30
 saved_license_plates = set()
-frame_count = 0  # 用於命名保存的圖像文件
-
+frame_count = 0
 plates_file = "plates.txt"
+last_license_plate = ""
+executor = ThreadPoolExecutor(max_workers=2)
+
+#
+
+# 在程序啟動時初始化攝像頭
+class Camera:
+    def __init__(self, source=0):
+        self.cap = cv2.VideoCapture(source)
+        if not self.cap.isOpened():
+            raise RuntimeError("無法啟動攝像頭，請檢查設備。")
+    
+    def get_frame(self):
+        ret, frame = self.cap.read()
+        if not ret:
+            raise RuntimeError("無法從攝像頭讀取影像。")
+        return frame
+
+    def release(self):
+        if self.cap.isOpened():
+            self.cap.release()
+
+camera = Camera()
 
 # 獲取當前日期和時間
 current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -30,36 +70,26 @@ with open(plates_file, "a", encoding="utf-8") as file:
 
 print(f"執行時間已記錄在 {plates_file}")
 
-# 初始化攝影機
-cap = cv2.VideoCapture(0)
-
-if not cap.isOpened():
-    print("無法啟動攝影機，請檢查設備。")
-    exit()
-
-# 定義函數以驗證車牌格式
+# 檢查車牌號是否有效
 def is_valid_license_plate(text):
-    # 汽車車牌格式
     car_plate_pattern = r'^(?:[A-Z]{2,3}-\d{4}|\d{4}-[A-Z]{2}|\d{4}-[A-Z]\d|\d{4}-\d[A-Z]|[A-Z]\d-\d{4}|\d[A-Z]-\d{4})$'
-    # 機車車牌格式
     bike_plate_pattern = r'^(?:\d{3}-[A-Z]{3}|[A-Z]{3}-\d{3}|[A-Z0-9]{3}-[A-Z0-9]{3})$'
-    
-    # 驗證車牌是否符合任一格式
     return re.match(car_plate_pattern, text) or re.match(bike_plate_pattern, text)
 
+# 處理檢測和識別
+def detect_and_recognize(frame):
+    results = model(frame)
+    return results
+
+# 視頻流生成器
 def process_video_stream():
-    global frame_count, saved_license_plates
+    global frame_count, saved_license_plates, last_license_plate
     while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("無法從攝影機讀取影像。")
-            break
-
+        frame = camera.get_frame()
         try:
-            # 使用 YOLO 模型檢測車牌
-            results = model(frame)
+            results = detect_and_recognize(frame)
+            detected_text = ""
 
-            detected_text = ''
             for result in results:
                 boxes = result.boxes
                 if boxes is not None and boxes.data is not None and len(boxes.data) > 0:
@@ -82,66 +112,62 @@ def process_video_stream():
                                                 if word_info and len(word_info) > 1:
                                                     detected_text += word_info[1][0] + ' '
 
-                                license_text = detected_text.strip().replace(' ', '')  # 清理文本
+                                license_text = detected_text.strip().replace(' ', '')
+
                                 if is_valid_license_plate(license_text):
                                     if license_text not in saved_license_plates:
-                                        # 繪製邊界框和文字
                                         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                                         cv2.putText(frame, license_text, (x1, y1 - 10),
                                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-
-                                        # 保存影像
                                         file_name = f"captured_frame_{frame_count}.jpg"
                                         save_path = os.path.join(save_dir, file_name)
                                         cv2.imwrite(save_path, frame)
-                                        print(f"檢測到車牌 '{license_text}'，保存圖像: {save_path}")
                                         frame_count += 1
                                         saved_license_plates.add(license_text)
-                                        
-                                        
-                                        # 將新的車牌添加到 plates.txt
+                                        last_license_plate = license_text
                                         with open(plates_file, "a", encoding="utf-8") as file:
                                             file.write(license_text + "\n")
-                                            lines = [line.strip() for line in file.readlines() if line.strip()]
-                                        print("已儲存車牌")
-                            
-                                        
-                                else:
-                                    print(f"無效車牌號碼: {license_text}")
         except Exception as e:
             print(f"處理影像時發生錯誤: {e}")
 
-        # 顯示即時畫面
-        cv2.imshow('樹莓派用車牌辨識', frame)
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame = buffer.tobytes()
 
-        # 按下 'q' 鍵退出程式
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-    cap.release()
-    cv2.destroyAllWindows()
+@app.route('/')
+def index():
+    images = os.listdir(save_dir)
+    return render_template('index-v1.html', images=images, last_license_plate=last_license_plate)
 
-if __name__ == "__main__":
-    process_video_stream()
+@app.route('/video_feed')
+def video_feed():
+    return Response(process_video_stream(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/static/captured_images/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(save_dir, filename)
 
-# @app.route('/')
-# def index():
-#     global last_license_plate
-#     # 在 HTML 页面显示摄像头画面和保存的图片以及最后识别的车牌号
-#     images = os.listdir(save_dir)
-#     return render_template('index.html', images=images, last_license_plate=last_license_plate)
+@app.route('/get_dynamic_data')
+def get_dynamic_data():
+    images = os.listdir(save_dir)
+    image_urls = [f"/static/captured_images/{img}" for img in images]
+    return jsonify({
+        "last_license_plate": last_license_plate,
+        "images": image_urls,
+        "video_feed": "/video_feed"
+    })
 
-# @app.route('/video_feed')
-# def video_feed():
-#     # 摄像头视频流路由
-#     return Response(generate_frames(),
-#                     mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.route('/shutdown')
+def shutdown():
+    camera.release()
+    return "攝像頭已釋放"
 
-# @app.route('/static/captured_images/<filename>')
-# def uploaded_file(filename):
-#     # 提供保存的图像
-#     return send_from_directory(save_dir, filename)
+if __name__ == '__main__':
+    try:
+        multiprocessing.set_start_method('spawn', force=True)
+        app.run(host='0.0.0.0', debug=True, port=5001)
 
-# if __name__ == '__main__':
-#     app.run(host='0.0.0.0', debug=True)
+    finally:
+        camera.release()
